@@ -16,9 +16,7 @@ if choice == 'sample':
     print("Using sample data with eight employees and target hours based on 420.")
     # Sample employee list of 8 employees.
     employees = ["Alice", "Bob", "Charlie", "David", "Eva", "Frank", "Grace", "Henry"]
-    
     # Generate multipliers until the total target hours fall between 1850 and 2000.
-    # Since target hours = 420 * sum(multipliers), the sum of multipliers must be between 1850/420 and 2000/420.
     lower_bound = 1850 / 420  # ≈ 4.4048
     upper_bound = 2000 / 420  # ≈ 4.7619
     while True:
@@ -26,7 +24,6 @@ if choice == 'sample':
         total_target = 420 * sum(multipliers)
         if lower_bound * 420 <= total_target <= upper_bound * 420:
             break
-
     employee_target_hours = {e: 420 * m for e, m in zip(employees, multipliers)}
     
     # For individual unavailable days, randomly select 5 days (from 0 to 69) for each employee.
@@ -126,20 +123,15 @@ days = range(num_days)
 def day_type(d):
     # Monday=0, Tuesday=1, ... Sunday=6
     dow = d % 7
-    if dow < 5:  # Monday to Friday
-        return 'weekday'
-    else:       # Saturday and Sunday
-        return 'weekend'
+    return 'weekday' if dow < 5 else 'weekend'
 
-# Define shifts by day type
+# Define shifts by day type.
 shifts_by_day = {
-    'weekday': ['FA', 'FB', 'AA', 'AB'],  # Two morning, two evening shifts
-    'weekend': ['SA', 'SB']               # Two all-day shifts
+    'weekday': ['FA', 'FB', 'AA', 'AB'],  # Two morning, two evening shifts.
+    'weekend': ['SA', 'SB']               # Two all-day shifts.
 }
 
-# Define shift durations in hours:
-# Weekday morning: 6:30AM to 9:00AM = 2.5 hours, evening: 4:00PM to 10:00PM = 6 hours.
-# Weekend all-day: 9:30AM to 10:00PM = 12.5 hours.
+# Define shift durations in hours.
 shift_duration = {
     'FA': 2.5, 'FB': 2.5,
     'AA': 6,   'AB': 6,
@@ -147,13 +139,8 @@ shift_duration = {
 }
 
 # -----------------------------------------------
-# Build employee availability dictionary
+# Build employee availability dictionary.
 # -----------------------------------------------
-# For each employee and each day (0-69), determine if the employee is available.
-# Rule:
-#   - If the day-of-week (d % 7) is in the employee's never_available set, mark as unavailable.
-#   - Else, if the day is individually marked as unavailable, mark as unavailable.
-#   - Otherwise, mark as available.
 availability = {}
 for e in employees:
     availability[e] = {}
@@ -167,151 +154,166 @@ for e in employees:
             availability[e][d] = True
 
 # ---------------------------
-# Build the optimization model
+# Iteratively build and solve the model with target hours constraint.
 # ---------------------------
-model = cp_model.CpModel()
+scale = 10  # To convert fractional hours to integer constraints.
+margin_lower = 0.67
+margin_upper = 0.73
+attempt = 1
+solution_found = False
 
-# Create decision variables: shift_vars[(e, d, s)] indicates if employee e is assigned shift s on day d.
-shift_vars = {}
-for e in employees:
+while True:
+    print(f"Attempt {attempt}: Trying with target hour margins {margin_lower*100:.0f}% to {margin_upper*100:.0f}%")
+    
+    # Build a new model for this attempt.
+    model = cp_model.CpModel()
+    
+    # Decision variables: shift_vars[(e, d, s)] indicates if employee e is assigned shift s on day d.
+    shift_vars = {}
+    for e in employees:
+        for d in days:
+            for s in shifts_by_day[day_type(d)]:
+                shift_vars[(e, d, s)] = model.NewBoolVar(f'{e}_{d}_{s}')
+    
+    # Constraint 1: Each employee can work at most one shift per day.
+    for e in employees:
+        for d in days:
+            model.Add(sum(shift_vars[(e, d, s)] for s in shifts_by_day[day_type(d)]) <= 1)
+    
+    # Constraint 2: Only assign a shift if the employee is available on that day.
+    for e in employees:
+        for d in days:
+            if not availability[e][d]:
+                for s in shifts_by_day[day_type(d)]:
+                    model.Add(shift_vars[(e, d, s)] == 0)
+    
+    # Constraint 3: Employee target hours constraint with lower and upper bounds.
+    for e in employees:
+        total_hours = sum(shift_vars[(e, d, s)] * int(shift_duration[s] * scale)
+                          for d in days for s in shifts_by_day[day_type(d)])
+        model.Add(total_hours >= int(employee_target_hours[e] * margin_lower * scale))
+        model.Add(total_hours <= int(employee_target_hours[e] * margin_upper * scale))
+    
+    # Constraint 4: Every shift must be filled.
     for d in days:
         for s in shifts_by_day[day_type(d)]:
-            shift_vars[(e, d, s)] = model.NewBoolVar(f'{e}_{d}_{s}')
+            model.Add(sum(shift_vars[(e, d, s)] for e in employees) == 1)
+    
+    # (Optional) Objective: Maximize total number of assigned shifts.
+    model.Maximize(sum(shift_vars.values()))
+    
+    # Solve the model.
+    solver = cp_model.CpSolver()
+    status = solver.Solve(model)
+    
+    if status in [cp_model.OPTIMAL, cp_model.FEASIBLE]:
+        print(f"Solution found on attempt {attempt} with margins {margin_lower*100:.0f}% to {margin_upper*100:.0f}%.")
+        solution_found = True
+        break
+    else:
+        print("No solution found with these margins. Extending margins by 1% on both sides and trying again.\n")
+        margin_lower -= 0.01
+        margin_upper += 0.01
+        attempt += 1
 
-# Constraint 1: Each employee can work at most one shift per day.
-for e in employees:
-    for d in days:
-        model.Add(sum(shift_vars[(e, d, s)] for s in shifts_by_day[day_type(d)]) <= 1)
-
-# Constraint 2: Only assign a shift if the employee is available on that day.
-for e in employees:
-    for d in days:
-        if not availability[e][d]:
-            for s in shifts_by_day[day_type(d)]:
-                model.Add(shift_vars[(e, d, s)] == 0)
-
-# Constraint 3: Employee target hours constraint.
-scale = 10  # To convert fractional hours to integers
-for e in employees:
-    total_hours = sum(shift_vars[(e, d, s)] * int(shift_duration[s] * scale)
-                      for d in days for s in shifts_by_day[day_type(d)])
-    model.Add(total_hours <= int(employee_target_hours[e] * scale))
-
-# New Constraint: Every shift must be filled.
+# ---------------------------
+# Process the solution.
+# ---------------------------
+# Build schedule records with shift duration.
+schedule_records = []
 for d in days:
-    shifts_today = shifts_by_day[day_type(d)]
-    for s in shifts_today:
-        model.Add(sum(shift_vars[(e, d, s)] for e in employees) == 1)
-
-# (Optional) Objective: Maximize total number of assigned shifts.
-model.Maximize(sum(shift_vars.values()))
-
-# ---------------------------
-# Solve the model
-# ---------------------------
-solver = cp_model.CpSolver()
-status = solver.Solve(model)
-
-if status in [cp_model.OPTIMAL, cp_model.FEASIBLE]:
-    # Build schedule records with shift duration.
-    schedule_records = []
-    for d in days:
-        for e in employees:
-            for s in shifts_by_day[day_type(d)]:
-                if solver.Value(shift_vars[(e, d, s)]) == 1:
-                    schedule_records.append({'Employee': e, 'Day': d, 'Shift': s, 'Hours': shift_duration[s]})
-    
-    schedule_df = pd.DataFrame(schedule_records)
-    schedule_df = schedule_df.sort_values(by=['Employee', 'Day'])
-    
-    # Create 10 weekly tables (each week has 7 days).
-    weekly_tables = {}
-    for week in range(10):
-        week_start = week * 7
-        week_end = week_start + 7
-        week_df = pd.DataFrame(index=employees, columns=[f'Day {d+1}' for d in range(week_start, week_end)])
-        for e in employees:
-            for d in range(week_start, week_end):
-                if not availability[e][d]:
-                    week_df.loc[e, f'Day {d+1}'] = 'Unavailable'
-                else:
-                    assign = schedule_df[(schedule_df['Employee'] == e) & (schedule_df['Day'] == d)]
-                    if not assign.empty:
-                        week_df.loc[e, f'Day {d+1}'] = assign.iloc[0]['Shift']
-                    else:
-                        week_df.loc[e, f'Day {d+1}'] = 'Off'
-        weekly_tables[f'Week {week+1}'] = week_df
-
-    # ---------------------------
-    # Analytics Computation
-    # ---------------------------
-    # Add a column to schedule_df to indicate the day type (weekday/weekend)
-    schedule_df['Day_Type'] = schedule_df['Day'].apply(day_type)
-    
-    analytics = []
     for e in employees:
-        emp_df = schedule_df[schedule_df['Employee'] == e]
-        scheduled_hours = emp_df['Hours'].sum()
-        target_hours = employee_target_hours[e]
-        hours_percent = (scheduled_hours / target_hours) * 100 if target_hours > 0 else 0
+        for s in shifts_by_day[day_type(d)]:
+            if solver.Value(shift_vars[(e, d, s)]) == 1:
+                schedule_records.append({'Employee': e, 'Day': d, 'Shift': s, 'Hours': shift_duration[s]})
+                
+schedule_df = pd.DataFrame(schedule_records)
+schedule_df = schedule_df.sort_values(by=['Employee', 'Day'])
 
-        # Weekday shifts for morning/evening breakdown.
-        weekday_df = emp_df[emp_df['Day_Type'] == 'weekday']
-        morning_shifts = weekday_df[weekday_df['Shift'].isin(['FA', 'FB'])].shape[0]
-        evening_shifts = weekday_df[weekday_df['Shift'].isin(['AA', 'AB'])].shape[0]
-        total_weekday = morning_shifts + evening_shifts
-        pct_morning = (morning_shifts / total_weekday * 100) if total_weekday > 0 else 0
-        pct_evening = (evening_shifts / total_weekday * 100) if total_weekday > 0 else 0
+# Create 10 weekly tables (each week has 7 days).
+weekly_tables = {}
+for week in range(10):
+    week_start = week * 7
+    week_end = week_start + 7
+    week_df = pd.DataFrame(index=employees, columns=[f'Day {d+1}' for d in range(week_start, week_end)])
+    for e in employees:
+        for d in range(week_start, week_end):
+            if not availability[e][d]:
+                week_df.loc[e, f'Day {d+1}'] = 'Unavailable'
+            else:
+                assign = schedule_df[(schedule_df['Employee'] == e) & (schedule_df['Day'] == d)]
+                if not assign.empty:
+                    week_df.loc[e, f'Day {d+1}'] = assign.iloc[0]['Shift']
+                else:
+                    week_df.loc[e, f'Day {d+1}'] = 'Off'
+    weekly_tables[f'Week {week+1}'] = week_df
 
-        # Breakdown based on the second letter (A or B) for all shifts.
-        shift_A_count = emp_df['Shift'].apply(lambda s: 1 if s[1] == 'A' else 0).sum()
-        shift_B_count = emp_df['Shift'].apply(lambda s: 1 if s[1] == 'B' else 0).sum()
-        total_shifts = emp_df.shape[0]
-        pct_shift_A = (shift_A_count / total_shifts * 100) if total_shifts > 0 else 0
-        pct_shift_B = (shift_B_count / total_shifts * 100) if total_shifts > 0 else 0
+# ---------------------------
+# Analytics Computation
+# ---------------------------
+# Add a column to schedule_df to indicate the day type.
+schedule_df['Day_Type'] = schedule_df['Day'].apply(day_type)
 
-        # Weekend vs. Weekday shift count.
-        weekday_count = emp_df[emp_df['Day_Type'] == 'weekday'].shape[0]
-        weekend_count = emp_df[emp_df['Day_Type'] == 'weekend'].shape[0]
-        pct_weekday = (weekday_count / total_shifts * 100) if total_shifts > 0 else 0
-        pct_weekend = (weekend_count / total_shifts * 100) if total_shifts > 0 else 0
+analytics = []
+for e in employees:
+    emp_df = schedule_df[schedule_df['Employee'] == e]
+    scheduled_hours = emp_df['Hours'].sum()
+    target_hours = employee_target_hours[e]
+    hours_percent = (scheduled_hours / target_hours) * 100 if target_hours > 0 else 0
 
-        analytics.append({
-            'Employee': e,
-            'Target Hours': target_hours,
-            'Scheduled Hours': scheduled_hours,
-            'Hours %': hours_percent,
-            'Weekday Shifts': weekday_count,
-            'Weekend Shifts': weekend_count,
-            '% Weekday Shifts': pct_weekday,
-            '% Weekend Shifts': pct_weekend,
-            'Morning Shifts (Weekday)': morning_shifts,
-            'Evening Shifts (Weekday)': evening_shifts,
-            '% Morning Shifts (Weekday)': pct_morning,
-            '% Evening Shifts (Weekday)': pct_evening,
-            'Shift A Count': shift_A_count,
-            'Shift B Count': shift_B_count,
-            '% Shift A': pct_shift_A,
-            '% Shift B': pct_shift_B
-        })
+    # Weekday shifts: morning (FA/FB) vs. evening (AA/AB).
+    weekday_df = emp_df[emp_df['Day_Type'] == 'weekday']
+    morning_shifts = weekday_df[weekday_df['Shift'].isin(['FA', 'FB'])].shape[0]
+    evening_shifts = weekday_df[weekday_df['Shift'].isin(['AA', 'AB'])].shape[0]
+    total_weekday = morning_shifts + evening_shifts
+    pct_morning = (morning_shifts / total_weekday * 100) if total_weekday > 0 else 0
+    pct_evening = (evening_shifts / total_weekday * 100) if total_weekday > 0 else 0
 
-    analytics_df = pd.DataFrame(analytics)
+    # Breakdown based on the second letter (A vs. B) for all shifts.
+    shift_A_count = emp_df['Shift'].apply(lambda s: 1 if s[1] == 'A' else 0).sum()
+    shift_B_count = emp_df['Shift'].apply(lambda s: 1 if s[1] == 'B' else 0).sum()
+    total_shifts = emp_df.shape[0]
+    pct_shift_A = (shift_A_count / total_shifts * 100) if total_shifts > 0 else 0
+    pct_shift_B = (shift_B_count / total_shifts * 100) if total_shifts > 0 else 0
 
-    # ---------------------------
-    # Write all sheets to the Excel file.
-    # ---------------------------
-    with pd.ExcelWriter(output_filename) as writer:
-        # Write each weekly table in its own sheet.
-        for week_name, df in weekly_tables.items():
-            df.to_excel(writer, sheet_name=week_name)
-        # Write the analytics summary to a separate sheet.
-        analytics_df.to_excel(writer, sheet_name="Analytics")
+    # Weekend vs. Weekday shift counts.
+    weekday_count = emp_df[emp_df['Day_Type'] == 'weekday'].shape[0]
+    weekend_count = emp_df[emp_df['Day_Type'] == 'weekend'].shape[0]
+    pct_weekday = (weekday_count / total_shifts * 100) if total_shifts > 0 else 0
+    pct_weekend = (weekend_count / total_shifts * 100) if total_shifts > 0 else 0
 
-    # Also print each week's table and the analytics summary.
+    analytics.append({
+        'Employee': e,
+        'Target Hours': target_hours,
+        'Scheduled Hours': scheduled_hours,
+        'Hours %': hours_percent,
+        'Weekday Shifts': weekday_count,
+        'Weekend Shifts': weekend_count,
+        '% Weekday Shifts': pct_weekday,
+        '% Weekend Shifts': pct_weekend,
+        'Morning Shifts (Weekday)': morning_shifts,
+        'Evening Shifts (Weekday)': evening_shifts,
+        '% Morning Shifts (Weekday)': pct_morning,
+        '% Evening Shifts (Weekday)': pct_evening,
+        'Shift A Count': shift_A_count,
+        'Shift B Count': shift_B_count,
+        '% Shift A': pct_shift_A,
+        '% Shift B': pct_shift_B
+    })
+
+analytics_df = pd.DataFrame(analytics)
+
+# ---------------------------
+# Write all sheets to the Excel file.
+# ---------------------------
+with pd.ExcelWriter(output_filename) as writer:
     for week_name, df in weekly_tables.items():
-        print(f"\n{week_name}:")
-        print(df)
-    print("\nAnalytics Summary:")
-    print(analytics_df)
-else:
-    print("No feasible solution found.")
+        df.to_excel(writer, sheet_name=week_name)
+    analytics_df.to_excel(writer, sheet_name="Analytics")
+
+# Print results to console.
+for week_name, df in weekly_tables.items():
+    print(f"\n{week_name}:")
+    print(df)
+print("\nAnalytics Summary:")
+print(analytics_df)
