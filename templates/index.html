@@ -9,6 +9,16 @@
     <style>
         body {
             padding-top: 20px;
+            font-family: 'Rockwell', Georgia, "Times New Roman", serif;
+            background-color: #f5f7fa;
+            color: #333;
+        }
+
+        h1,
+        h3,
+        th {
+            color: #94c11a;
+            /* Headings and table headers use this green */
         }
 
         .container {
@@ -18,6 +28,7 @@
         .table td,
         .table th {
             vertical-align: middle;
+            border-color: #dee2e6;
         }
 
         /* Fixed column widths for Talent Pool table */
@@ -76,12 +87,30 @@
         #employeesTable td:nth-child(6) {
             width: 10%;
         }
+
+        /* Button styling */
+        .btn-primary {
+            background-color: #003366;
+            border-color: #003366;
+        }
+
+        .btn-primary:hover {
+            background-color: #002244;
+            border-color: #002244;
+        }
+
+        /* QR Code container styling */
+        .qr-code-container {
+            margin-top: 50px;
+            padding: 20px;
+            text-align: center;
+        }
     </style>
 </head>
 
 <body>
     <div class="container">
-        <h1 class="mb-4">Planungsanwendung</h1>
+        <h1 class="mb-4"><del>KI-gestützte</del> Arbeitsplanung für den Wohnbereich von Brändi</h1>
 
         <!-- Talent Pool Table -->
         <h3>Talent Pool</h3>
@@ -171,6 +200,12 @@
             </div>
             <button type="submit" class="btn btn-primary">Zeitplan generieren &amp; XLSX herunterladen</button>
         </form>
+
+        <!-- QR Code Section -->
+        <div class="qr-code-container">
+            <img src="https://api.qrserver.com/v1/create-qr-code/?data=https://braendi-hack4good-planner-2f1302cfe464.herokuapp.com&size=150x150"
+                alt="QR Code für https://braendi-hack4good-planner-2f1302cfe464.herokuapp.com">
+        </div>
     </div>
 
     <!-- Bootstrap JS and dependencies -->
@@ -184,7 +219,6 @@
         const dayMapping = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"];
         let employeeCount = 0;
 
-        // Update row: update Soll‑Stunden based on Pensum input.
         function updateRowTargetHours(row) {
             const multiplierInput = row.querySelector('.multiplier');
             const targetHoursCell = row.querySelector('.targetHours');
@@ -221,16 +255,13 @@
             }
         }
 
-        // Add an employee row to the manual input form.
         function addEmployeeRow(name = "", multiplier = "0.35", regularUnavailable = "", individualUnavailable = "", source = "manual") {
             employeeCount++;
             const tbody = document.querySelector('#employeesTable tbody');
             const row = document.createElement('tr');
             row.innerHTML = `
       <td><input type="text" class="form-control employeeName" name="employee_names[]" value="${name}" required></td>
-      <td>
-        <input type="number" step="0.05" min="0.35" class="form-control multiplier" name="multipliers[]" value="${multiplier}" required>
-      </td>
+      <td><input type="number" step="0.05" min="0.35" class="form-control multiplier" name="multipliers[]" value="${multiplier}" required></td>
       <td class="targetHours">0.0</td>
       <td>
         <select multiple class="form-control regularUnavailable" name="regular_unavailable_${employeeCount}[]">
@@ -272,19 +303,17 @@
             updateRowTargetHours(row);
         }
 
-        // Add employee from the Talent Pool to the manual form.
         function addTalentEmployee(button) {
             const talentRow = button.closest("tr");
             const name = talentRow.cells[0].innerText.trim();
-            // Convert percentage string (e.g., "95%") to decimal (0.95)
             const multiplierText = talentRow.cells[1].innerText.trim();
+            // Convert percentage string (e.g., "95%") to decimal (0.95)
             const multiplier = (parseFloat(multiplierText.replace('%', '')) / 100).toFixed(2);
             const regularUnavailable = talentRow.cells[3].innerText.trim();
             addEmployeeRow(name, multiplier, regularUnavailable, "", "talent");
             talentRow.remove();
         }
 
-        // Return an employee row from the manual form back to the Talent Pool.
         function returnToTalentPool(manualRow) {
             const name = manualRow.querySelector('.employeeName').value;
             const multiplier = manualRow.querySelector('.multiplier').value;
