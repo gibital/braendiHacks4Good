@@ -21,13 +21,17 @@ if choice == 'sample':
     # Generate multipliers until the total target hours fall between 1850 and 2000.
     lower_bound = 1850 / BASE_HOURS  # ≈ 4.4048
     upper_bound = 2000 / BASE_HOURS  # ≈ 4.7619
-    while True:
+    sample_attempt = 0
+    while sample_attempt < 50:
         multipliers = [random.choice(allowed_multipliers) for _ in employees]
         total_target = BASE_HOURS * sum(multipliers)
         if lower_bound * BASE_HOURS <= total_target <= upper_bound * BASE_HOURS:
             break
+        sample_attempt += 1
     employee_target_hours = {e: BASE_HOURS * m for e, m in zip(employees, multipliers)}
     
+    if sample_attempt == 50:
+        print("No sample data found meeting the target hours criteria after 50 attempts, proceeding anyways.")
     # For individual unavailable days, randomly select 5 days (from 0 to 69) for each employee.
     individual_unavailable = {e: set(random.sample(range(70), 5)) for e in employees}
     
@@ -235,7 +239,7 @@ margin_lower = 0.67
 margin_upper = 0.73
 attempt = 1
 
-while True:
+while attempt <= 10:
     print(f"\nAttempt {attempt}: Trying with target hour margins {margin_lower*100:.0f}% to {margin_upper*100:.0f}%")
     
     model = cp_model.CpModel()
@@ -284,6 +288,10 @@ while True:
         margin_lower -= 0.01
         margin_upper += 0.01
         attempt += 1
+
+    print("No feasible solution found after 10 attempts. Exiting the scheduling loop now, try again with a different team configuration.")
+    # You could raise an exception or exit gracefully.
+    exit(1)
 
 # ---------------------------
 # Process the solution.
