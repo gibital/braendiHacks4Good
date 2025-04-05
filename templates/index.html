@@ -14,47 +14,94 @@
 <body>
 <div class="container">
   <h1 class="mb-4">Employee Scheduling Setup</h1>
+
+  <!-- Talent Pool Table -->
+  <h3>Talent Pool</h3>
+  <table class="table table-bordered" id="talentPoolTable">
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Multiplier</th>
+        <th>Target Hours</th>
+        <th>Regular Unavailable Days</th>
+        <th>Action</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Annette</td>
+        <td>0.95</td>
+        <td>399.0</td>
+        <td>Monday</td>
+        <td><button type="button" class="btn btn-primary addTalentBtn">Add</button></td>
+      </tr>
+      <tr>
+        <td>Patrick</td>
+        <td>0.65</td>
+        <td>273.0</td>
+        <td>Wednesday, Thursday</td>
+        <td><button type="button" class="btn btn-primary addTalentBtn">Add</button></td>
+      </tr>
+      <tr>
+        <td>Rahel</td>
+        <td>0.8</td>
+        <td>336.0</td>
+        <td>Sunday</td>
+        <td><button type="button" class="btn btn-primary addTalentBtn">Add</button></td>
+      </tr>
+      <tr>
+        <td>Annina</td>
+        <td>0.75</td>
+        <td>315.0</td>
+        <td>Always available</td>
+        <td><button type="button" class="btn btn-primary addTalentBtn">Add</button></td>
+      </tr>
+      <tr>
+        <td>Conrad</td>
+        <td>0.65</td>
+        <td>273.0</td>
+        <td>Tuesday</td>
+        <td><button type="button" class="btn btn-primary addTalentBtn">Add</button></td>
+      </tr>
+      <tr>
+        <td>Joshua</td>
+        <td>0.5</td>
+        <td>210.0</td>
+        <td>Tuesday</td>
+        <td><button type="button" class="btn btn-primary addTalentBtn">Add</button></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- Manual Input Form -->
   <form id="scheduleForm" method="post" action="/">
-    <!-- Mode Selection -->
-    <div class="form-group">
-      <label>Data Mode:</label><br>
-      <div class="form-check form-check-inline">
-        <input class="form-check-input" type="radio" name="mode" id="mode_sample" value="sample">
-        <label class="form-check-label" for="mode_sample">Sample Data</label>
-      </div>
-      <div class="form-check form-check-inline">
-        <input class="form-check-input" type="radio" name="mode" id="mode_manual" value="manual" checked>
-        <label class="form-check-label" for="mode_manual">Real Data</label>
-      </div>
+    <h3>Employees</h3>
+    <table class="table table-bordered" id="employeesTable">
+      <thead>
+        <tr>
+          <th>Employee Name</th>
+          <th>Multiplier</th>
+          <th>Target Hours</th>
+          <th>Regular Unavailable Days</th>
+          <th>Individual Unavailable Days</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        <!-- Starts empty -->
+      </tbody>
+    </table>
+    <button type="button" class="btn btn-secondary" id="addEmployeeBtn">Add Employee Manually</button>
+    <div class="mt-3">
+      <h4>Aggregate Target Hours: <span id="aggregateTarget">0.0</span></h4>
+      <div id="aggregateFeedback" class="alert" role="alert" style="display: none;"></div>
     </div>
-    <div class="form-group">
+    <!-- Moved Output Filename input to right above the submit button -->
+    <div class="form-group mt-3">
       <label for="filename_prefix">Output Filename Prefix</label>
       <input type="text" class="form-control" id="filename_prefix" name="filename_prefix" placeholder="my_schedule">
     </div>
-    <!-- Employee Table (only for Real Data) -->
-    <div id="employeeSection">
-      <h3>Employees</h3>
-      <table class="table table-bordered" id="employeesTable">
-        <thead>
-          <tr>
-            <th>Employee Name</th>
-            <th>Multiplier</th>
-            <th>Target Hours</th>
-            <th>Regular Unavailable Days</th>
-            <th>Individual Unavailable Days</th>
-            <th>Action</th>
-          </tr>
-        </thead>
-        <tbody>
-        </tbody>
-      </table>
-      <button type="button" class="btn btn-secondary" id="addEmployeeBtn">Add Employee</button>
-      <div class="mt-3">
-        <h4>Aggregate Target Hours: <span id="aggregateTarget">0.0</span></h4>
-        <div id="aggregateFeedback" class="alert" role="alert" style="display: none;"></div>
-      </div>
-    </div>
-    <button type="submit" class="btn btn-primary mt-3">Generate Schedule & Download XLSX</button>
+    <button type="submit" class="btn btn-primary">Generate Schedule & Download XLSX</button>
   </form>
 </div>
 
@@ -104,7 +151,7 @@
     }
   }
 
-  function addEmployeeRow(name="", multiplier="0.35", regularUnavailable="", individualUnavailable="") {
+  function addEmployeeRow(name="", multiplier="0.35", regularUnavailable="", individualUnavailable="", source="manual") {
     employeeCount++;
     const tbody = document.querySelector('#employeesTable tbody');
     const row = document.createElement('tr');
@@ -124,10 +171,27 @@
         </select>
       </td>
       <td><input type="text" class="form-control individualUnavailable" name="individual_unavailable_${employeeCount}" placeholder="e.g., 1,5,10"></td>
-      <td><button type="button" class="btn btn-danger removeEmployeeBtn">Remove</button></td>
+      <td>
+        <input type="hidden" class="source" value="${source}">
+        <button type="button" class="btn btn-danger removeEmployeeBtn">Remove</button>
+      </td>
     `;
+    if (regularUnavailable) {
+      const days = regularUnavailable.split(',').map(s => s.trim().toLowerCase());
+      const select = row.querySelector('.regularUnavailable');
+      Array.from(select.options).forEach(option => {
+        const dayName = dayMapping[parseInt(option.value)].toLowerCase();
+        if (days.includes(dayName)) {
+          option.selected = true;
+        }
+      });
+    }
     row.querySelector('.multiplier').addEventListener('input', () => updateRowTargetHours(row));
-    row.querySelector('.removeEmployeeBtn').addEventListener('click', () => {
+    row.querySelector('.removeEmployeeBtn').addEventListener('click', function(){
+      const sourceValue = row.querySelector('.source').value;
+      if(sourceValue === "talent"){
+        returnToTalentPool(row);
+      }
       row.remove();
       updateAggregate();
     });
@@ -135,28 +199,51 @@
     updateRowTargetHours(row);
   }
 
+  function addTalentEmployee(button) {
+    const talentRow = button.closest("tr");
+    const name = talentRow.cells[0].innerText.trim();
+    const multiplier = talentRow.cells[1].innerText.trim();
+    const regularUnavailable = talentRow.cells[3].innerText.trim();
+    addEmployeeRow(name, multiplier, regularUnavailable, "", "talent");
+    talentRow.remove();
+  }
+
+  function returnToTalentPool(manualRow) {
+    const name = manualRow.querySelector('.employeeName').value;
+    const multiplier = manualRow.querySelector('.multiplier').value;
+    const select = manualRow.querySelector('.regularUnavailable');
+    let regularUnavailable = [];
+    Array.from(select.options).forEach(option => {
+      if (option.selected) {
+        regularUnavailable.push(dayMapping[parseInt(option.value)]);
+      }
+    });
+    const talentTbody = document.querySelector('#talentPoolTable tbody');
+    const newRow = document.createElement('tr');
+    newRow.innerHTML = `
+      <td>${name}</td>
+      <td>${multiplier}</td>
+      <td>${(BASE_HOURS * parseFloat(multiplier)).toFixed(1)}</td>
+      <td>${regularUnavailable.join(", ")}</td>
+      <td><button type="button" class="btn btn-primary addTalentBtn">Add</button></td>
+    `;
+    newRow.querySelector('.addTalentBtn').addEventListener('click', function(){
+      addTalentEmployee(this);
+    });
+    talentTbody.appendChild(newRow);
+  }
+
   document.getElementById('addEmployeeBtn').addEventListener('click', () => {
     addEmployeeRow();
   });
 
-  // Toggle between Sample and Real Data modes.
-  document.querySelectorAll('input[name="mode"]').forEach(radio => {
-    radio.addEventListener('change', function(){
-      if (this.value === 'sample') {
-        document.getElementById('employeeSection').style.display = 'none';
-      } else {
-        document.getElementById('employeeSection').style.display = 'block';
-      }
+  document.querySelectorAll('.addTalentBtn').forEach(btn => {
+    btn.addEventListener('click', function(){
+      addTalentEmployee(this);
     });
   });
 
-  // Initialize with Real Data mode and one employee row.
-  window.onload = function() {
-    // Ensure manual mode is selected.
-    document.getElementById('mode_manual').checked = true;
-    document.getElementById('employeeSection').style.display = 'block';
-    addEmployeeRow();
-  };
+  // Do not initialize any manual rows on page load.
 </script>
 </body>
 </html>
