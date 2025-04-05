@@ -1,6 +1,7 @@
 import random
 from ortools.sat.python import cp_model
 import pandas as pd
+from itertools import combinations
 
 # ---------------------------
 # Prompt user for input data
@@ -8,6 +9,7 @@ import pandas as pd
 
 # Updated allowed multipliers including additional values.
 allowed_multipliers = [0.35, 0.40, 0.45, 0.50, 0.55, 0.60, 0.65, 0.70, 0.75, 0.80, 0.85, 0.90, 0.95, 1.0]
+BASE_HOURS = 420  # fixed base hours for every employee
 
 # First prompt: choose sample data or manual input.
 choice = input("Type 'sample' to use a sample set of employees with randomized settings, or 'manual' to manually enter them: ").strip().lower()
@@ -17,14 +19,14 @@ if choice == 'sample':
     # Sample employee list of 8 employees.
     employees = ["Alice", "Bob", "Charlie", "David", "Eva", "Frank", "Grace", "Henry"]
     # Generate multipliers until the total target hours fall between 1850 and 2000.
-    lower_bound = 1850 / 420  # ≈ 4.4048
-    upper_bound = 2000 / 420  # ≈ 4.7619
+    lower_bound = 1850 / BASE_HOURS  # ≈ 4.4048
+    upper_bound = 2000 / BASE_HOURS  # ≈ 4.7619
     while True:
         multipliers = [random.choice(allowed_multipliers) for _ in employees]
-        total_target = 420 * sum(multipliers)
-        if lower_bound * 420 <= total_target <= upper_bound * 420:
+        total_target = BASE_HOURS * sum(multipliers)
+        if lower_bound * BASE_HOURS <= total_target <= upper_bound * BASE_HOURS:
             break
-    employee_target_hours = {e: 420 * m for e, m in zip(employees, multipliers)}
+    employee_target_hours = {e: BASE_HOURS * m for e, m in zip(employees, multipliers)}
     
     # For individual unavailable days, randomly select 5 days (from 0 to 69) for each employee.
     individual_unavailable = {e: set(random.sample(range(70), 5)) for e in employees}
@@ -53,6 +55,7 @@ else:
     employees = [e.strip() for e in employee_input.split(",") if e.strip()]
 
     # 2. Multipliers: For each employee, prompt for a multiplier.
+    # In manual mode, we use a base of 420 hours.
     employee_target_hours = {}
     for e in employees:
         multiplier_input = input(f"Enter multiplier for {e} (allowed values {allowed_multipliers}, or press Enter for a random value): ")
@@ -67,7 +70,7 @@ else:
                 multiplier = random.choice(allowed_multipliers)
         else:
             multiplier = random.choice(allowed_multipliers)
-        employee_target_hours[e] = 840 * multiplier  # target hours for the 70-day period
+        employee_target_hours[e] = BASE_HOURS * multiplier  
 
     # 3. Unavailable Days: For each employee, prompt for individual unavailable days (0-69)
     individual_unavailable = {}
@@ -108,26 +111,97 @@ else:
         else:
             never_available[e] = set()
 
+    # --- Provide immediate feedback on aggregate target hours ---
+    lower_threshold = 1850
+    upper_threshold = 2000
+    total_target = sum(employee_target_hours.values())
+    while True:
+        print(f"\nAggregate target hours for all employees: {total_target:.1f}")
+        if lower_threshold <= total_target <= upper_threshold:
+            print("Aggregate target hours are within the acceptable range.")
+            break
+        if total_target < lower_threshold:
+            print("Aggregate target hours are below the lower bound.")
+            # Suggestion: determine if adding one employee (base = 420) with an allowed multiplier would work.
+            possible_multipliers = [m for m in allowed_multipliers if lower_threshold <= total_target + BASE_HOURS * m <= upper_threshold]
+            if possible_multipliers:
+                print(f"Consider adding one employee with a multiplier between {min(possible_multipliers)} and {max(possible_multipliers)}.")
+            else:
+                # Otherwise, suggest the minimum number of fulltime employees (multiplier=1.0) needed.
+                k = 1
+                while True:
+                    new_total = total_target + k * BASE_HOURS
+                    if new_total >= lower_threshold:
+                        print(f"By adding {k} fulltime employee(s) (multiplier = 1.0), the aggregate target hours would become {new_total:.1f}.")
+                        break
+                    k += 1
+        elif total_target > upper_threshold:
+            print("Aggregate target hours exceed the upper bound.")
+            removal_candidates = []
+            for e in employees:
+                new_total = total_target - employee_target_hours[e]
+                if lower_threshold <= new_total <= upper_threshold:
+                    removal_candidates.append(e)
+            if removal_candidates:
+                print("Consider removing one of the following employees to bring the total within range:")
+                print(", ".join(removal_candidates))
+            else:
+                print("Consider removing a combination of employees to lower the aggregate target hours.")
+        # Allow user to modify the employee list.
+        response = input("Would you like to modify the employee list? (Type 'add', 'remove', or 'done' to continue): ").strip().lower()
+        if response == "done":
+            break
+        elif response == "add":
+            new_emp = input("Enter new employee name: ").strip()
+            new_multiplier_input = input(f"Enter multiplier for {new_emp} (allowed values {allowed_multipliers}, or press Enter for a random value): ").strip()
+            if new_multiplier_input:
+                try:
+                    new_multiplier = float(new_multiplier_input)
+                    if new_multiplier not in allowed_multipliers:
+                        print("Multiplier not allowed; using a random value.")
+                        new_multiplier = random.choice(allowed_multipliers)
+                except Exception:
+                    new_multiplier = random.choice(allowed_multipliers)
+            else:
+                new_multiplier = random.choice(allowed_multipliers)
+            employee_target_hours[new_emp] = BASE_HOURS * new_multiplier
+            employees.append(new_emp)
+            # For simplicity, set new employee's unavailability and never available as empty.
+            individual_unavailable[new_emp] = set()
+            never_available[new_emp] = set()
+        elif response == "remove":
+            rem_emp = input("Enter the name of the employee to remove: ").strip()
+            if rem_emp in employees:
+                employees.remove(rem_emp)
+                del employee_target_hours[rem_emp]
+                del individual_unavailable[rem_emp]
+                del never_available[rem_emp]
+            else:
+                print("Employee not found.")
+        else:
+            print("Invalid input. Please type 'add', 'remove', or 'done'.")
+        total_target = sum(employee_target_hours.values())
+
 # Prompt for the output filename prefix.
-filename_prefix = input("Enter the output filename prefix (this will precede '_weekly_schedule.xlsx'): ").strip()
+filename_prefix = input("\nEnter the output filename prefix (this will precede '_weekly_schedule.xlsx'): ").strip()
 if not filename_prefix:
     filename_prefix = "weekly_schedule"
 output_filename = f"outputs/{filename_prefix}_weekly_schedule.xlsx"
 
 # ---------------------------
-# Define problem parameters
+# Define problem parameters for scheduling.
 # ---------------------------
+# For scheduling, we assume a 70-day period.
 num_days = 70
 days = range(num_days)
 
 def day_type(d):
-    # Monday=0, Tuesday=1, ... Sunday=6
     dow = d % 7
     return 'weekday' if dow < 5 else 'weekend'
 
 # Define shifts by day type.
 shifts_by_day = {
-    'weekday': ['FA', 'FB', 'AA', 'AB'],  # Two morning, two evening shifts.
+    'weekday': ['FA', 'FB', 'AA', 'AB'],  # Two morning and two evening shifts.
     'weekend': ['SA', 'SB']               # Two all-day shifts.
 }
 
@@ -154,18 +228,16 @@ for e in employees:
             availability[e][d] = True
 
 # ---------------------------
-# Iteratively build and solve the model with target hours constraint.
+# Iteratively build and solve the scheduling model with target hours constraints.
 # ---------------------------
-scale = 10  # To convert fractional hours to integer constraints.
+scale = 10  # To convert fractional hours to integers.
 margin_lower = 0.67
 margin_upper = 0.73
 attempt = 1
-solution_found = False
 
 while True:
-    print(f"Attempt {attempt}: Trying with target hour margins {margin_lower*100:.0f}% to {margin_upper*100:.0f}%")
+    print(f"\nAttempt {attempt}: Trying with target hour margins {margin_lower*100:.0f}% to {margin_upper*100:.0f}%")
     
-    # Build a new model for this attempt.
     model = cp_model.CpModel()
     
     # Decision variables: shift_vars[(e, d, s)] indicates if employee e is assigned shift s on day d.
@@ -187,7 +259,7 @@ while True:
                 for s in shifts_by_day[day_type(d)]:
                     model.Add(shift_vars[(e, d, s)] == 0)
     
-    # Constraint 3: Employee target hours constraint with lower and upper bounds.
+    # Constraint 3: Each employee’s scheduled hours must be between margin_lower and margin_upper of their target hours.
     for e in employees:
         total_hours = sum(shift_vars[(e, d, s)] * int(shift_duration[s] * scale)
                           for d in days for s in shifts_by_day[day_type(d)])
@@ -199,19 +271,16 @@ while True:
         for s in shifts_by_day[day_type(d)]:
             model.Add(sum(shift_vars[(e, d, s)] for e in employees) == 1)
     
-    # (Optional) Objective: Maximize total number of assigned shifts.
     model.Maximize(sum(shift_vars.values()))
     
-    # Solve the model.
     solver = cp_model.CpSolver()
     status = solver.Solve(model)
     
     if status in [cp_model.OPTIMAL, cp_model.FEASIBLE]:
         print(f"Solution found on attempt {attempt} with margins {margin_lower*100:.0f}% to {margin_upper*100:.0f}%.")
-        solution_found = True
         break
     else:
-        print("No solution found with these margins. Extending margins by 1% on both sides and trying again.\n")
+        print("No solution found with these margins. Extending margins by 1% on both sides and trying again.")
         margin_lower -= 0.01
         margin_upper += 0.01
         attempt += 1
@@ -219,7 +288,6 @@ while True:
 # ---------------------------
 # Process the solution.
 # ---------------------------
-# Build schedule records with shift duration.
 schedule_records = []
 for d in days:
     for e in employees:
@@ -249,11 +317,9 @@ for week in range(10):
     weekly_tables[f'Week {week+1}'] = week_df
 
 # ---------------------------
-# Analytics Computation
+# Analytics Computation.
 # ---------------------------
-# Add a column to schedule_df to indicate the day type.
 schedule_df['Day_Type'] = schedule_df['Day'].apply(day_type)
-
 analytics = []
 for e in employees:
     emp_df = schedule_df[schedule_df['Employee'] == e]
@@ -261,7 +327,6 @@ for e in employees:
     target_hours = employee_target_hours[e]
     hours_percent = (scheduled_hours / target_hours) * 100 if target_hours > 0 else 0
 
-    # Weekday shifts: morning (FA/FB) vs. evening (AA/AB).
     weekday_df = emp_df[emp_df['Day_Type'] == 'weekday']
     morning_shifts = weekday_df[weekday_df['Shift'].isin(['FA', 'FB'])].shape[0]
     evening_shifts = weekday_df[weekday_df['Shift'].isin(['AA', 'AB'])].shape[0]
@@ -269,14 +334,12 @@ for e in employees:
     pct_morning = (morning_shifts / total_weekday * 100) if total_weekday > 0 else 0
     pct_evening = (evening_shifts / total_weekday * 100) if total_weekday > 0 else 0
 
-    # Breakdown based on the second letter (A vs. B) for all shifts.
     shift_A_count = emp_df['Shift'].apply(lambda s: 1 if s[1] == 'A' else 0).sum()
     shift_B_count = emp_df['Shift'].apply(lambda s: 1 if s[1] == 'B' else 0).sum()
     total_shifts = emp_df.shape[0]
     pct_shift_A = (shift_A_count / total_shifts * 100) if total_shifts > 0 else 0
     pct_shift_B = (shift_B_count / total_shifts * 100) if total_shifts > 0 else 0
 
-    # Weekend vs. Weekday shift counts.
     weekday_count = emp_df[emp_df['Day_Type'] == 'weekday'].shape[0]
     weekend_count = emp_df[emp_df['Day_Type'] == 'weekend'].shape[0]
     pct_weekday = (weekday_count / total_shifts * 100) if total_shifts > 0 else 0
