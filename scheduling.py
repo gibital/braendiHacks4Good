@@ -134,6 +134,12 @@ def run_scheduling(employees, employee_target_hours, individual_unavailable, nev
 
     if attempt > 10:
         print("No feasible solution found after 10 attempts. Exiting the scheduling loop.")
+        print("Team and Availability Constraints:")
+        for e in employees:
+            print(f"Employee: {e}")
+            print(f"  Target Hours: {employee_target_hours[e]}")
+            print(f"  Individually Unavailable Days: {sorted(list(individual_unavailable.get(e, set())))}")
+            print(f"  Regularly Unavailable (day-of-week indices): {sorted(list(never_available.get(e, set())))}")
         return None
 
     # Process the solution: Build schedule records.

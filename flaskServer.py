@@ -4,6 +4,7 @@ import tempfile
 from flask import Flask, render_template, request, send_file, flash, redirect, url_for
 from scheduling import run_scheduling, BASE_HOURS
 app = Flask(__name__)
+app.secret_key = 'my_super_secret_key_123456'  # Replace with a secure random string!
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
