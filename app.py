@@ -319,34 +319,50 @@ for week in range(10):
 # ---------------------------
 # Analytics Computation.
 # ---------------------------
+# Add a column to schedule_df to indicate the day type.
 schedule_df['Day_Type'] = schedule_df['Day'].apply(day_type)
+
+# Mapping from day index to day name.
+day_mapping = {0: "Monday", 1: "Tuesday", 2: "Wednesday", 
+               3: "Thursday", 4: "Friday", 5: "Saturday", 6: "Sunday"}
+
 analytics = []
 for e in employees:
     emp_df = schedule_df[schedule_df['Employee'] == e]
     scheduled_hours = emp_df['Hours'].sum()
     target_hours = employee_target_hours[e]
-    hours_percent = (scheduled_hours / target_hours) * 100 if target_hours > 0 else 0
+    hours_percent = round((scheduled_hours / target_hours) * 100, 1) if target_hours > 0 else 0
 
     weekday_df = emp_df[emp_df['Day_Type'] == 'weekday']
     morning_shifts = weekday_df[weekday_df['Shift'].isin(['FA', 'FB'])].shape[0]
     evening_shifts = weekday_df[weekday_df['Shift'].isin(['AA', 'AB'])].shape[0]
     total_weekday = morning_shifts + evening_shifts
-    pct_morning = (morning_shifts / total_weekday * 100) if total_weekday > 0 else 0
-    pct_evening = (evening_shifts / total_weekday * 100) if total_weekday > 0 else 0
+    pct_morning = round((morning_shifts / total_weekday * 100), 1) if total_weekday > 0 else 0
+    pct_evening = round((evening_shifts / total_weekday * 100), 1) if total_weekday > 0 else 0
 
     shift_A_count = emp_df['Shift'].apply(lambda s: 1 if s[1] == 'A' else 0).sum()
     shift_B_count = emp_df['Shift'].apply(lambda s: 1 if s[1] == 'B' else 0).sum()
     total_shifts = emp_df.shape[0]
-    pct_shift_A = (shift_A_count / total_shifts * 100) if total_shifts > 0 else 0
-    pct_shift_B = (shift_B_count / total_shifts * 100) if total_shifts > 0 else 0
+    pct_shift_A = round((shift_A_count / total_shifts * 100), 1) if total_shifts > 0 else 0
+    pct_shift_B = round((shift_B_count / total_shifts * 100), 1) if total_shifts > 0 else 0
 
     weekday_count = emp_df[emp_df['Day_Type'] == 'weekday'].shape[0]
     weekend_count = emp_df[emp_df['Day_Type'] == 'weekend'].shape[0]
-    pct_weekday = (weekday_count / total_shifts * 100) if total_shifts > 0 else 0
-    pct_weekend = (weekend_count / total_shifts * 100) if total_shifts > 0 else 0
+    pct_weekday = round((weekday_count / total_shifts * 100), 1) if total_shifts > 0 else 0
+    pct_weekend = round((weekend_count / total_shifts * 100), 1) if total_shifts > 0 else 0
+
+    # Calculate the employee's multiplier (target hours / BASE_HOURS)
+    multiplier = round(employee_target_hours[e] / BASE_HOURS, 2)
+    # Convert the set of regularly unavailable days to a sorted, comma-separated string of day names.
+    regular_unavailable = sorted([day_mapping[d] for d in never_available.get(e, set())])
+    # Convert the set of individual unavailable days to a sorted, comma-separated string.
+    individual_unavail = sorted(list(individual_unavailable.get(e, set())))
 
     analytics.append({
         'Employee': e,
+        'Multiplier': multiplier,
+        'Regularly Unavailable Days': ", ".join(regular_unavailable) if regular_unavailable else "",
+        'Individually Unavailable Days': ", ".join(map(str, individual_unavail)) if individual_unavail else "",
         'Target Hours': target_hours,
         'Scheduled Hours': scheduled_hours,
         'Hours %': hours_percent,
