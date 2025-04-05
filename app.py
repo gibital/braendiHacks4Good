@@ -228,15 +228,77 @@ if status in [cp_model.OPTIMAL, cp_model.FEASIBLE]:
                     else:
                         week_df.loc[e, f'Day {d+1}'] = 'Off'
         weekly_tables[f'Week {week+1}'] = week_df
+
+    # ---------------------------
+    # Analytics Computation
+    # ---------------------------
+    # Add a column to schedule_df to indicate the day type (weekday/weekend)
+    schedule_df['Day_Type'] = schedule_df['Day'].apply(day_type)
     
-    # Write weekly tables to an Excel file with one sheet per week.
+    analytics = []
+    for e in employees:
+        emp_df = schedule_df[schedule_df['Employee'] == e]
+        scheduled_hours = emp_df['Hours'].sum()
+        target_hours = employee_target_hours[e]
+        hours_percent = (scheduled_hours / target_hours) * 100 if target_hours > 0 else 0
+
+        # Weekday shifts for morning/evening breakdown.
+        weekday_df = emp_df[emp_df['Day_Type'] == 'weekday']
+        morning_shifts = weekday_df[weekday_df['Shift'].isin(['FA', 'FB'])].shape[0]
+        evening_shifts = weekday_df[weekday_df['Shift'].isin(['AA', 'AB'])].shape[0]
+        total_weekday = morning_shifts + evening_shifts
+        pct_morning = (morning_shifts / total_weekday * 100) if total_weekday > 0 else 0
+        pct_evening = (evening_shifts / total_weekday * 100) if total_weekday > 0 else 0
+
+        # Breakdown based on the second letter (A or B) for all shifts.
+        shift_A_count = emp_df['Shift'].apply(lambda s: 1 if s[1] == 'A' else 0).sum()
+        shift_B_count = emp_df['Shift'].apply(lambda s: 1 if s[1] == 'B' else 0).sum()
+        total_shifts = emp_df.shape[0]
+        pct_shift_A = (shift_A_count / total_shifts * 100) if total_shifts > 0 else 0
+        pct_shift_B = (shift_B_count / total_shifts * 100) if total_shifts > 0 else 0
+
+        # Weekend vs. Weekday shift count.
+        weekday_count = emp_df[emp_df['Day_Type'] == 'weekday'].shape[0]
+        weekend_count = emp_df[emp_df['Day_Type'] == 'weekend'].shape[0]
+        pct_weekday = (weekday_count / total_shifts * 100) if total_shifts > 0 else 0
+        pct_weekend = (weekend_count / total_shifts * 100) if total_shifts > 0 else 0
+
+        analytics.append({
+            'Employee': e,
+            'Target Hours': target_hours,
+            'Scheduled Hours': scheduled_hours,
+            'Hours %': hours_percent,
+            'Weekday Shifts': weekday_count,
+            'Weekend Shifts': weekend_count,
+            '% Weekday Shifts': pct_weekday,
+            '% Weekend Shifts': pct_weekend,
+            'Morning Shifts (Weekday)': morning_shifts,
+            'Evening Shifts (Weekday)': evening_shifts,
+            '% Morning Shifts (Weekday)': pct_morning,
+            '% Evening Shifts (Weekday)': pct_evening,
+            'Shift A Count': shift_A_count,
+            'Shift B Count': shift_B_count,
+            '% Shift A': pct_shift_A,
+            '% Shift B': pct_shift_B
+        })
+
+    analytics_df = pd.DataFrame(analytics)
+
+    # ---------------------------
+    # Write all sheets to the Excel file.
+    # ---------------------------
     with pd.ExcelWriter(output_filename) as writer:
+        # Write each weekly table in its own sheet.
         for week_name, df in weekly_tables.items():
             df.to_excel(writer, sheet_name=week_name)
-    
-    # Also print each week's table.
+        # Write the analytics summary to a separate sheet.
+        analytics_df.to_excel(writer, sheet_name="Analytics")
+
+    # Also print each week's table and the analytics summary.
     for week_name, df in weekly_tables.items():
         print(f"\n{week_name}:")
         print(df)
+    print("\nAnalytics Summary:")
+    print(analytics_df)
 else:
     print("No feasible solution found.")
