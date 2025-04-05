@@ -6,19 +6,32 @@ import pandas as pd
 # Prompt user for input data
 # ---------------------------
 
+# Updated allowed multipliers including additional values.
+allowed_multipliers = [0.35, 0.40, 0.45, 0.50, 0.55, 0.60, 0.65, 0.70, 0.75, 0.80, 0.85, 0.90, 0.95, 1.0]
+
 # First prompt: choose sample data or manual input.
 choice = input("Type 'sample' to use a sample set of employees with randomized settings, or 'manual' to manually enter them: ").strip().lower()
-
-allowed_multipliers = [0.35, 0.40, 0.45, 0.50, 0.55, 0.60, 0.65, 0.70, 0.75, 0.80]
 
 if choice == 'sample':
     print("Using sample data with eight employees and target hours based on 420.")
     # Sample employee list of 8 employees.
     employees = ["Alice", "Bob", "Charlie", "David", "Eva", "Frank", "Grace", "Henry"]
-    # Randomly assign multipliers for each employee and calculate target hours as 420 * multiplier.
-    employee_target_hours = {e: 420 * random.choice(allowed_multipliers) for e in employees}
+    
+    # Generate multipliers until the total target hours fall between 1850 and 2000.
+    # Since target hours = 420 * sum(multipliers), the sum of multipliers must be between 1850/420 and 2000/420.
+    lower_bound = 1850 / 420  # ≈ 4.4048
+    upper_bound = 2000 / 420  # ≈ 4.7619
+    while True:
+        multipliers = [random.choice(allowed_multipliers) for _ in employees]
+        total_target = 420 * sum(multipliers)
+        if lower_bound * 420 <= total_target <= upper_bound * 420:
+            break
+
+    employee_target_hours = {e: 420 * m for e, m in zip(employees, multipliers)}
+    
     # For individual unavailable days, randomly select 5 days (from 0 to 69) for each employee.
     individual_unavailable = {e: set(random.sample(range(70), 5)) for e in employees}
+    
     # Map day names to indices.
     day_name_to_index = {
         'monday': 0,
