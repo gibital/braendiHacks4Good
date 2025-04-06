@@ -7,12 +7,12 @@ Unser Prototyp verwendet die Open Source library "Operations Research Tools" von
 Das git repository teilt sich auf in eine command line app und eine web Applikation.
 
 Command line app:
-app.py
+- app.py
 
 web Applikation:
-templates/index.html
-scheduling.py
-flaskServer.py
-runtime.txt
-requirements.txt
-Procfile (für deployment mit Heroku)
+- templates/index.html
+- scheduling.py
+- flaskServer.py
+- runtime.txt
+- requirements.txt
+- Procfile (für deployment mit Heroku)
